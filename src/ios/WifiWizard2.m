@@ -386,14 +386,13 @@
 
 - (NSString*) getWifiSsid {
     if (@available(iOS 13.0, *)) {
-        CLLocationManager* manager [[CLLocationManager alloc] init];
+        CLLocationManager* manager = [[CLLocationManager alloc] init];
         CLAuthorizationStatus authStatus = [manager authorizationStatus];
         
         if (authStatus == kCLAuthorizationStatusNotDetermined) {
             [manager requestWhenInUseAuthorization];
         } else if (authStatus == kCLAuthorizationStatusDenied) {
             NSLog(@"User has explicitly denied authorization for this application, or location services are disabled in Settings.");
-            [[UIApplication sharedApplication] openURL:[NSURL URLWithString:UIApplicationOpenSettingsURLString]];
             return nil;
         } 
     }
