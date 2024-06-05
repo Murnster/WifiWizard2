@@ -408,6 +408,34 @@ public class WifiWizard2 extends CordovaPlugin {
         JSONArray scanData = new JSONArray();
         final String[] error = {""};
 
+        for (ScanResult result1 : wifiResults) {
+          JSONObject wifiItem = new JSONObject();
+
+          try {
+            wifiItem.put("level", result1.level);
+            wifiItem.put("SSID", result1.SSID);
+            wifiItem.put("BSSID", result1.BSSID);
+            wifiItem.put("frequency", result1.frequency);
+            wifiItem.put("capabilities", result1.capabilities);
+            wifiItem.put("timestamp", result1.timestamp);
+
+            if (API_VERSION >= 23) { // Marshmallow
+              wifiItem.put("channelWidth", result1.channelWidth);
+              wifiItem.put("centerFreq0", result1.centerFreq0);
+              wifiItem.put("centerFreq1", result1.centerFreq1);
+            } else {
+              wifiItem.put("channelWidth", JSONObject.NULL);
+              wifiItem.put("centerFreq0", JSONObject.NULL);
+              wifiItem.put("centerFreq1", JSONObject.NULL);
+            }
+
+            scanData.put(wifiItem);
+          } catch (JSONException e) {
+            e.printStackTrace();
+            callbackContext.error(e.toString());
+          }
+        }
+
         if (context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_WIFI_RTT) && API_VERSION > 27) {
           Log.v(TAG, "RTT is supported");
           
@@ -418,40 +446,13 @@ public class WifiWizard2 extends CordovaPlugin {
             int maxPeers = RangingRequest.getMaxPeers();
             int peerCount = 0;
 
-            for (ScanResult result : wifiResults) {
+            for (ScanResult result2 : wifiResults) {
               if (peerCount >= maxPeers) {
                 break;
               }
               
-              JSONObject wifiItem = new JSONObject();
-              
-              try {
-                wifiItem.put("level", result.level);
-                wifiItem.put("SSID", result.SSID);
-                wifiItem.put("BSSID", result.BSSID);
-                wifiItem.put("frequency", result.frequency);
-                wifiItem.put("capabilities", result.capabilities);
-                wifiItem.put("timestamp", result.timestamp);
-                
-                if (API_VERSION >= 23) { // Marshmallow
-                  wifiItem.put("channelWidth", result.channelWidth);
-                  wifiItem.put("centerFreq0", result.centerFreq0);
-                  wifiItem.put("centerFreq1", result.centerFreq1);
-                } else {
-                  wifiItem.put("channelWidth", JSONObject.NULL);
-                  wifiItem.put("centerFreq0", JSONObject.NULL);
-                  wifiItem.put("centerFreq1", JSONObject.NULL);
-                }
-                
-                scanData.put(wifiItem);
-              } catch (JSONException e) {
-                e.printStackTrace();
-                callbackContext.error(e.toString());
-                return false;
-              }
-              
-              if (result.is80211mcResponder()) {
-                builder.addAccessPoint(result);
+              if (result2.is80211mcResponder()) {
+                builder.addAccessPoint(result2);
                 peerCount++;
               }
             }
@@ -511,7 +512,7 @@ public class WifiWizard2 extends CordovaPlugin {
 
             try {
               JSONObject data = new JSONObject();
-              data.put("wifiScan", wifiResults);
+              data.put("scanData", scanData);
               data.put("rttData", rttData);
               data.put("error", error[0]);
 
@@ -526,7 +527,7 @@ public class WifiWizard2 extends CordovaPlugin {
           
           try {
             JSONObject data = new JSONObject();
-            data.put("wifiScan", wifiResults);
+            data.put("scanData", scanData);
             data.put("rttData", rttData);
             data.put("error", error[0]);
 
@@ -538,38 +539,38 @@ public class WifiWizard2 extends CordovaPlugin {
       }
     };
 
-     Log.v(TAG, "Submitting timeout to threadpool");
-     cordova.getThreadPool().submit(new Runnable() {
-       public void run() {
+    Log.v(TAG, "Submitting timeout to threadpool");
+    cordova.getThreadPool().submit(new Runnable() {
+      public void run() {
 
-         Log.v(TAG, "Entering timeout");
+        Log.v(TAG, "Entering timeout");
 
-         final int FIFTEEN_SECONDS = 15000;
+        final int FIFTEEN_SECONDS = 15000;
 
-         try {
-           Thread.sleep(FIFTEEN_SECONDS);
-         } catch (InterruptedException e) {
-           Log.e(TAG, "Received InterruptedException e, " + e);
-           return;
-           // keep going into error
-         }
+        try {
+          Thread.sleep(FIFTEEN_SECONDS);
+        } catch (InterruptedException e) {
+          Log.e(TAG, "Received InterruptedException e, " + e);
+          return;
+          // keep going into error
+        }
 
-         Log.v(TAG, "Thread sleep done");
+        Log.v(TAG, "Thread sleep done");
 
-         synchronized (syncContext) {
-           if (syncContext.finished) {
-             Log.v(TAG, "In timeout, already finished");
-             return;
-           }
-           syncContext.finished = true;
+        synchronized (syncContext) {
+          if (syncContext.finished) {
+            Log.v(TAG, "In timeout, already finished");
+            return;
+          }
+          syncContext.finished = true;
 
-           context.unregisterReceiver(myReceiver);
-         }
+          context.unregisterReceiver(myReceiver);
+        }
 
-         Log.v(TAG, "In timeout, error");
-         callbackContext.error("TIMEOUT_WAITING_FOR_SCAN");
-       }
-     });
+        Log.v(TAG, "In timeout, error");
+        callbackContext.error("TIMEOUT_WAITING_FOR_SCAN");
+      }
+    });
 
     if (!wifiManager.startScan()) {
       Log.v(TAG, "Scan failed");
