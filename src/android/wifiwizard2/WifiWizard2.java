@@ -17,13 +17,15 @@ package wifiwizard2;
 import org.apache.cordova.*;
 
 import java.util.List;
-import java.util.concurrent.Future; 
+import java.util.concurrent.Future;
 import java.lang.InterruptedException;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import android.Manifest;
+import android.content.Context;
 import android.content.pm.PackageManager;
 import android.content.BroadcastReceiver;
 import android.content.Intent;
@@ -36,6 +38,10 @@ import android.net.NetworkRequest;
 import android.net.DhcpInfo;
 
 import android.net.wifi.WifiManager;
+import android.net.wifi.rtt.RangingResult;
+import android.net.wifi.rtt.WifiRttManager;
+import android.net.wifi.rtt.RangingRequest;
+import android.net.wifi.rtt.RangingResultCallback;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiEnterpriseConfig;
 import android.net.wifi.ScanResult;
@@ -46,11 +52,12 @@ import android.net.ConnectivityManager;
 import android.net.ConnectivityManager.NetworkCallback;
 import android.net.NetworkSpecifier;
 
-import android.content.Context;
 import android.os.AsyncTask;
 import android.util.Log;
 import android.os.Build.VERSION;
 import android.os.PatternMatcher;
+
+import androidx.core.app.ActivityCompat;
 
 import java.net.URL;
 import java.net.InetAddress;
@@ -80,6 +87,7 @@ public class WifiWizard2 extends CordovaPlugin {
   private static final String IS_WIFI_ENABLED = "isWifiEnabled";
   private static final String SET_WIFI_ENABLED = "setWifiEnabled";
   private static final String SCAN = "scan";
+  private static final String SCAN_RTT = "scanWithRTT";
   private static final String ENABLE_NETWORK = "enable";
   private static final String DISABLE_NETWORK = "disable";
   private static final String GET_SSID_NET_ID = "getSSIDNetworkID";
@@ -110,6 +118,7 @@ public class WifiWizard2 extends CordovaPlugin {
   private static boolean bssidRequested = false;
 
   private WifiManager wifiManager;
+  private WifiRttManager rttWifiManager;
   private CallbackContext callbackContext;
   private JSONArray passedData;
 
@@ -154,12 +163,13 @@ public class WifiWizard2 extends CordovaPlugin {
   public void initialize(CordovaInterface cordova, CordovaWebView webView) {
     super.initialize(cordova, webView);
     this.wifiManager = (WifiManager) cordova.getActivity().getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+    this.rttWifiManager = (WifiRttManager) cordova.getActivity().getApplicationContext().getSystemService(Context.WIFI_RTT_RANGING_SERVICE);
     this.connectivityManager = (ConnectivityManager) cordova.getActivity().getApplicationContext().getSystemService(Context.CONNECTIVITY_SERVICE);
   }
 
   @Override
   public boolean execute(String action, JSONArray data, CallbackContext callbackContext)
-      throws JSONException {
+          throws JSONException {
 
     this.callbackContext = callbackContext;
     this.passedData = data;
@@ -196,7 +206,7 @@ public class WifiWizard2 extends CordovaPlugin {
       }
 
       // Return only IP address
-      if( action.equals( GET_WIFI_IP_ADDRESS ) ){
+      if (action.equals(GET_WIFI_IP_ADDRESS)) {
         callbackContext.success(ip);
         return true;
       }
@@ -240,6 +250,8 @@ public class WifiWizard2 extends CordovaPlugin {
       this.reconnect(callbackContext);
     } else if (action.equals(SCAN)) {
       this.scan(callbackContext, data);
+    } else if (action.equals(SCAN_RTT)) {
+      this.scanWithRTT(callbackContext, data);
     } else if (action.equals(REMOVE_NETWORK)) {
       this.remove(callbackContext, data);
     } else if (action.equals(CONNECT_NETWORK)) {
@@ -357,6 +369,218 @@ public class WifiWizard2 extends CordovaPlugin {
     return true;
   }
 
+  /**
+   * Scans networks and sends the list back with RTT data on the success callback
+   *
+   * @param callbackContext A Cordova callback context
+   * @param data JSONArray with [0] == JSONObject
+   * @return true
+   */
+  private boolean scanWithRTT(final CallbackContext callbackContext, final JSONArray data) {
+    Log.v(TAG, "Checking for RTT support");
+    final Context context = cordova.getActivity().getApplicationContext();
+    final ScanSyncContext syncContext = new ScanSyncContext();
+
+    Log.v(TAG, "Entering startScan with RTT");
+
+    IntentFilter filter = new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION);
+
+    BroadcastReceiver myReceiver = new BroadcastReceiver() {
+      @Override
+      public void onReceive(Context context, Intent intent) {
+        synchronized (syncContext) {
+          if (syncContext.finished) {
+            Log.v(TAG, "In onReceive, already finished");
+            return;
+          }
+          
+          syncContext.finished = true;
+          context.unregisterReceiver(this);
+        }
+
+        if (ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+          callbackContext.error("ACCESS_FINE_LOCATION_FALSE");
+        }
+
+        final List<ScanResult> wifiResults = wifiManager.getScanResults();
+        
+        JSONArray rttData = new JSONArray();
+        JSONArray scanData = new JSONArray();
+        final String[] error = {""};
+
+        if (context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_WIFI_RTT) && API_VERSION > 27) {
+          Log.v(TAG, "RTT is supported");
+          
+          if (rttWifiManager.isAvailable()) {
+            // Fetch RTT data
+            RangingRequest.Builder builder = new RangingRequest.Builder();
+
+            int maxPeers = RangingRequest.getMaxPeers();
+            int peerCount = 0;
+
+            for (ScanResult result : wifiResults) {
+              if (peerCount >= maxPeers) {
+                break;
+              }
+              
+              JSONObject wifiItem = new JSONObject();
+              
+              try {
+                wifiItem.put("level", result.level);
+                wifiItem.put("SSID", result.SSID);
+                wifiItem.put("BSSID", result.BSSID);
+                wifiItem.put("frequency", result.frequency);
+                wifiItem.put("capabilities", result.capabilities);
+                wifiItem.put("timestamp", result.timestamp);
+                
+                if (API_VERSION >= 23) { // Marshmallow
+                  wifiItem.put("channelWidth", result.channelWidth);
+                  wifiItem.put("centerFreq0", result.centerFreq0);
+                  wifiItem.put("centerFreq1", result.centerFreq1);
+                } else {
+                  wifiItem.put("channelWidth", JSONObject.NULL);
+                  wifiItem.put("centerFreq0", JSONObject.NULL);
+                  wifiItem.put("centerFreq1", JSONObject.NULL);
+                }
+                
+                scanData.put(wifiItem);
+              } catch (JSONException e) {
+                e.printStackTrace();
+                callbackContext.error(e.toString());
+                return false;
+              }
+              
+              if (result.is80211mcResponder()) {
+                builder.addAccessPoint(result);
+                peerCount++;
+              }
+            }
+
+            RangingRequest request = builder.build();
+
+            try {
+              rttWifiManager.startRanging(request, cordova.getThreadPool(), new RangingResultCallback() {
+                @Override
+                public void onRangingResults(List<RangingResult> results) {
+                  // Process RTT results
+                  for (RangingResult result : results) {
+                    final int status = result.getStatus();
+
+                    if (status != STATUS_CODE_FAIL) {
+                      JSONObject rttItem = new JSONObject();
+
+                      try {
+                        rttItem.put("status", result.getStatus());
+                        rttItem.put("macAddress", result.getMacAddress());
+                        rttItem.put("distanceMm", result.getDistanceMm());
+                        rttItem.put("distanceStdDevMm", result.getDistanceStdDevMm());
+                        rttItem.put("rssi", result.getRssi());
+                        rttData.put(rttItem);
+                      } catch (JSONException e) {
+                        error[0] = e.getMessage();
+                      }
+                    } else {
+                      Log.v(TAG, "Result Failed With Status: " + status);
+                    }
+                  }
+
+                  try {
+                    JSONObject returnData = new JSONObject();
+                    returnData.put("scanData", scanData);
+                    returnData.put("rttData", rttData);
+                    returnData.put("error", error[0]);
+
+                    callbackContext.success(returnData);
+                  } catch (JSONException e) {
+                    callbackContext.error("SCAN_WITH_RTT_FAILURE_1");
+                  }
+                }
+
+                @Override
+                public void onRangingFailure(int code) {
+                  // Handle failure
+                  error[0] = "Ranging failed with code: " + code;
+                }
+              });
+            } catch (Exception e) {
+              error[0] = "SecurityException: " + e.getMessage();
+            }
+          } else {
+            Log.v(TAG, "RTT is not supported");
+            error[0] = "RTT_NOT_SUPPORTED";
+
+            try {
+              JSONObject data = new JSONObject();
+              data.put("wifiScan", wifiResults);
+              data.put("rttData", rttData);
+              data.put("error", error[0]);
+
+              callbackContext.success(data);
+            } catch (JSONException e) {
+              callbackContext.error("SCAN_WITH_RTT_FAILURE_2");
+            }
+          }
+        } else {
+          Log.v(TAG, "RTT is not supported");
+          error[0] = "RTT_NOT_SUPPORTED";
+          
+          try {
+            JSONObject data = new JSONObject();
+            data.put("wifiScan", wifiResults);
+            data.put("rttData", rttData);
+            data.put("error", error[0]);
+
+            callbackContext.success(data);
+          } catch (JSONException e) {
+            callbackContext.error("SCAN_WITH_RTT_FAILURE_3");
+          }
+        }
+      }
+    };
+
+     Log.v(TAG, "Submitting timeout to threadpool");
+     cordova.getThreadPool().submit(new Runnable() {
+       public void run() {
+
+         Log.v(TAG, "Entering timeout");
+
+         final int FIFTEEN_SECONDS = 15000;
+
+         try {
+           Thread.sleep(FIFTEEN_SECONDS);
+         } catch (InterruptedException e) {
+           Log.e(TAG, "Received InterruptedException e, " + e);
+           return;
+           // keep going into error
+         }
+
+         Log.v(TAG, "Thread sleep done");
+
+         synchronized (syncContext) {
+           if (syncContext.finished) {
+             Log.v(TAG, "In timeout, already finished");
+             return;
+           }
+           syncContext.finished = true;
+
+           context.unregisterReceiver(myReceiver);
+         }
+
+         Log.v(TAG, "In timeout, error");
+         callbackContext.error("TIMEOUT_WAITING_FOR_SCAN");
+       }
+     });
+
+    if (!wifiManager.startScan()) {
+      Log.v(TAG, "Scan failed");
+      callbackContext.error("WIFI_SCAN_FAILED");
+      return false;
+    }
+
+    context.registerReceiver(myReceiver, filter);
+    return true;
+  }
+  
   /**
    * This methods adds a network to the list of available WiFi networks. If the network already
    * exists, then it updates it.

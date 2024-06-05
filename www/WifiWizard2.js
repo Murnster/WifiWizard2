@@ -300,6 +300,16 @@ var WifiWizard2 = {
     },
 
     /**
+     * Start network scan and return results with RTT Data if it is supported (same as scan())
+     * @returns {Promise<any>}
+     */
+    scanWithRTT: function () {
+        return new Promise(function (resolve, reject) {
+            cordova.exec(resolve, reject, 'WifiWizard2', 'scanWithRTT', []);
+        });
+    },
+
+    /**
      * Check if WiFi is enabled
      * @returns {Promise<any>}
      */
