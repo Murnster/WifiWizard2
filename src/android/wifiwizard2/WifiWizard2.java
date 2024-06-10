@@ -369,182 +369,336 @@ public class WifiWizard2 extends CordovaPlugin {
     return true;
   }
 
+//  /**
+//   * Scans networks and sends the list back with RTT data on the success callback
+//   *
+//   * @param callbackContext A Cordova callback context
+//   * @param data JSONArray with [0] == JSONObject
+//   * @return true
+//   */
+//  private boolean scanWithRTT(final CallbackContext callbackContext, final JSONArray data) {
+//    Log.v(TAG, "Checking for RTT support");
+//    final Context context = cordova.getActivity().getApplicationContext();
+//    final ScanSyncContext syncContext = new ScanSyncContext();
+//
+//    Log.v(TAG, "Entering startScan with RTT");
+//
+//    IntentFilter filter = new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION);
+//
+//    BroadcastReceiver myReceiver = new BroadcastReceiver() {
+//      @Override
+//      public void onReceive(Context context, Intent intent) {
+//        synchronized (syncContext) {
+//          if (syncContext.finished) {
+//            Log.v(TAG, "In onReceive, already finished");
+//            return;
+//          }
+//
+//          syncContext.finished = true;
+//          context.unregisterReceiver(this);
+//        }
+//
+//        if (ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+//          callbackContext.error("ACCESS_FINE_LOCATION_FALSE");
+//        }
+//
+//        final List<ScanResult> wifiResults = wifiManager.getScanResults();
+//
+//        JSONArray rttData = new JSONArray();
+//        JSONArray scanData = new JSONArray();
+//        final String[] error = {""};
+//
+//        for (ScanResult result1 : wifiResults) {
+//          JSONObject wifiItem = new JSONObject();
+//
+//          try {
+//            wifiItem.put("level", result1.level);
+//            wifiItem.put("SSID", result1.SSID);
+//            wifiItem.put("BSSID", result1.BSSID);
+//            wifiItem.put("frequency", result1.frequency);
+//            wifiItem.put("capabilities", result1.capabilities);
+//            wifiItem.put("timestamp", result1.timestamp);
+//
+//            if (API_VERSION >= 23) { // Marshmallow
+//              wifiItem.put("channelWidth", result1.channelWidth);
+//              wifiItem.put("centerFreq0", result1.centerFreq0);
+//              wifiItem.put("centerFreq1", result1.centerFreq1);
+//            } else {
+//              wifiItem.put("channelWidth", JSONObject.NULL);
+//              wifiItem.put("centerFreq0", JSONObject.NULL);
+//              wifiItem.put("centerFreq1", JSONObject.NULL);
+//            }
+//
+//            scanData.put(wifiItem);
+//          } catch (JSONException e) {
+//            e.printStackTrace();
+//            callbackContext.error(e.toString());
+//          }
+//        }
+//
+//        if (context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_WIFI_RTT) && API_VERSION > 27) {
+//          Log.v(TAG, "RTT is supported");
+//
+//          if (rttWifiManager.isAvailable()) {
+//            // Fetch RTT data
+//            RangingRequest.Builder builder = new RangingRequest.Builder();
+//
+//            int maxPeers = RangingRequest.getMaxPeers();
+//            int peerCount = 0;
+//
+//            for (ScanResult result2 : wifiResults) {
+//              if (peerCount >= maxPeers) {
+//                break;
+//              }
+//
+//              if (result2.is80211mcResponder()) {
+//                builder.addAccessPoint(result2);
+//                peerCount++;
+//              }
+//            }
+//
+//            RangingRequest request = builder.build();
+//
+//            try {
+//              rttWifiManager.startRanging(request, cordova.getThreadPool(), new RangingResultCallback() {
+//                @Override
+//                public void onRangingResults(List<RangingResult> results) {
+//                  // Process RTT results
+//                  for (RangingResult result : results) {
+//                    final int status = result.getStatus();
+//
+//                    if (status != STATUS_CODE_FAIL) {
+//                      JSONObject rttItem = new JSONObject();
+//
+//                      try {
+//                        rttItem.put("status", result.getStatus());
+//                        rttItem.put("macAddress", result.getMacAddress());
+//                        rttItem.put("distanceMm", result.getDistanceMm());
+//                        rttItem.put("distanceStdDevMm", result.getDistanceStdDevMm());
+//                        rttItem.put("rssi", result.getRssi());
+//                        rttData.put(rttItem);
+//                      } catch (JSONException e) {
+//                        error[0] = e.getMessage();
+//                      }
+//                    } else {
+//                      Log.v(TAG, "Result Failed With Status: " + status);
+//                    }
+//                  }
+//
+//                  try {
+//                    JSONObject returnData = new JSONObject();
+//                    returnData.put("scanData", scanData);
+//                    returnData.put("rttData", rttData);
+//                    returnData.put("error", error[0]);
+//
+//                    callbackContext.success(returnData);
+//                  } catch (JSONException e) {
+//                    callbackContext.error("SCAN_WITH_RTT_FAILURE_1");
+//                  }
+//                }
+//
+//                @Override
+//                public void onRangingFailure(int code) {
+//                  // Handle failure
+//                  error[0] = "Ranging failed with code: " + code;
+//                }
+//              });
+//            } catch (Exception e) {
+//              error[0] = "SecurityException: " + e.getMessage();
+//            }
+//          } else {
+//            Log.v(TAG, "RTT is not supported");
+//            error[0] = "RTT_NOT_SUPPORTED";
+//
+//            try {
+//              JSONObject data = new JSONObject();
+//              data.put("scanData", scanData);
+//              data.put("rttData", rttData);
+//              data.put("error", error[0]);
+//
+//              callbackContext.success(data);
+//            } catch (JSONException e) {
+//              callbackContext.error("SCAN_WITH_RTT_FAILURE_2");
+//            }
+//          }
+//        } else {
+//          Log.v(TAG, "RTT is not supported");
+//          error[0] = "RTT_NOT_SUPPORTED";
+//
+//          try {
+//            JSONObject data = new JSONObject();
+//            data.put("scanData", scanData);
+//            data.put("rttData", rttData);
+//            data.put("error", error[0]);
+//
+//            callbackContext.success(data);
+//          } catch (JSONException e) {
+//            callbackContext.error("SCAN_WITH_RTT_FAILURE_3");
+//          }
+//        }
+//      }
+//    };
+//
+//    Log.v(TAG, "Submitting timeout to threadpool");
+//    cordova.getThreadPool().submit(new Runnable() {
+//      public void run() {
+//
+//        Log.v(TAG, "Entering timeout");
+//
+//        final int FIFTEEN_SECONDS = 15000;
+//
+//        try {
+//          Thread.sleep(FIFTEEN_SECONDS);
+//        } catch (InterruptedException e) {
+//          Log.e(TAG, "Received InterruptedException e, " + e);
+//          return;
+//          // keep going into error
+//        }
+//
+//        Log.v(TAG, "Thread sleep done");
+//
+//        synchronized (syncContext) {
+//          if (syncContext.finished) {
+//            Log.v(TAG, "In timeout, already finished");
+//            return;
+//          }
+//          syncContext.finished = true;
+//
+//          context.unregisterReceiver(myReceiver);
+//        }
+//
+//        Log.v(TAG, "In timeout, error");
+//        callbackContext.error("TIMEOUT_WAITING_FOR_SCAN");
+//      }
+//    });
+//
+//    if (!wifiManager.startScan()) {
+//      Log.v(TAG, "Scan failed");
+//      callbackContext.error("WIFI_SCAN_FAILED");
+//      return false;
+//    }
+//
+//    context.registerReceiver(myReceiver, filter);
+//    return true;
+//  }
+
   /**
-   * Scans networks and sends the list back with RTT data on the success callback
+   * Scans RTT data, must call scan first
    *
    * @param callbackContext A Cordova callback context
    * @param data JSONArray with [0] == JSONObject
    * @return true
    */
   private boolean scanWithRTT(final CallbackContext callbackContext, final JSONArray data) {
-    Log.v(TAG, "Checking for RTT support");
+    Log.v(TAG, "Entering Scan RTT");
     final Context context = cordova.getActivity().getApplicationContext();
     final ScanSyncContext syncContext = new ScanSyncContext();
 
-    Log.v(TAG, "Entering startScan with RTT");
+    synchronized (syncContext) {
+      if (syncContext.finished) {
+        Log.v(TAG, "In onReceive, already finished");
+        return false;
+      }
 
-    IntentFilter filter = new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION);
+      syncContext.finished = true;
+    }
 
-    BroadcastReceiver myReceiver = new BroadcastReceiver() {
-      @Override
-      public void onReceive(Context context, Intent intent) {
-        synchronized (syncContext) {
-          if (syncContext.finished) {
-            Log.v(TAG, "In onReceive, already finished");
-            return;
+    Log.v(TAG, "Checking for RTT support");
+    if (ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+      callbackContext.error("ACCESS_FINE_LOCATION_FALSE");
+      return false;
+    }
+
+    final List<ScanResult> wifiResults = wifiManager.getScanResults();
+    JSONArray rttData = new JSONArray();
+    final String[] error = {""};
+
+    if (context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_WIFI_RTT) && API_VERSION > 27) {
+      Log.v(TAG, "RTT is supported");
+
+      if (rttWifiManager.isAvailable()) {
+        Log.v(TAG, "RTT is available");
+        RangingRequest.Builder builder = new RangingRequest.Builder();
+
+        int maxPeers = RangingRequest.getMaxPeers();
+        int peerCount = 0;
+
+        for (ScanResult result : wifiResults) {
+          if (peerCount >= maxPeers) {
+            break;
           }
-          
-          syncContext.finished = true;
-          context.unregisterReceiver(this);
-        }
 
-        if (ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-          callbackContext.error("ACCESS_FINE_LOCATION_FALSE");
-        }
-
-        final List<ScanResult> wifiResults = wifiManager.getScanResults();
-        
-        JSONArray rttData = new JSONArray();
-        JSONArray scanData = new JSONArray();
-        final String[] error = {""};
-
-        for (ScanResult result1 : wifiResults) {
-          JSONObject wifiItem = new JSONObject();
-
-          try {
-            wifiItem.put("level", result1.level);
-            wifiItem.put("SSID", result1.SSID);
-            wifiItem.put("BSSID", result1.BSSID);
-            wifiItem.put("frequency", result1.frequency);
-            wifiItem.put("capabilities", result1.capabilities);
-            wifiItem.put("timestamp", result1.timestamp);
-
-            if (API_VERSION >= 23) { // Marshmallow
-              wifiItem.put("channelWidth", result1.channelWidth);
-              wifiItem.put("centerFreq0", result1.centerFreq0);
-              wifiItem.put("centerFreq1", result1.centerFreq1);
-            } else {
-              wifiItem.put("channelWidth", JSONObject.NULL);
-              wifiItem.put("centerFreq0", JSONObject.NULL);
-              wifiItem.put("centerFreq1", JSONObject.NULL);
-            }
-
-            scanData.put(wifiItem);
-          } catch (JSONException e) {
-            e.printStackTrace();
-            callbackContext.error(e.toString());
+          if (result.is80211mcResponder()) {
+            builder.addAccessPoint(result);
+            peerCount++;
           }
         }
 
-        if (context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_WIFI_RTT) && API_VERSION > 27) {
-          Log.v(TAG, "RTT is supported");
-          
-          if (rttWifiManager.isAvailable()) {
-            // Fetch RTT data
-            RangingRequest.Builder builder = new RangingRequest.Builder();
+        RangingRequest request = builder.build();
 
-            int maxPeers = RangingRequest.getMaxPeers();
-            int peerCount = 0;
+        try {
+          rttWifiManager.startRanging(request, cordova.getThreadPool(), new RangingResultCallback() {
+            @Override
+            public void onRangingResults(List<RangingResult> results) {
+              // Process RTT results
+              for (RangingResult result : results) {
+                final int status = result.getStatus();
 
-            for (ScanResult result2 : wifiResults) {
-              if (peerCount >= maxPeers) {
-                break;
-              }
-              
-              if (result2.is80211mcResponder()) {
-                builder.addAccessPoint(result2);
-                peerCount++;
-              }
-            }
-
-            RangingRequest request = builder.build();
-
-            try {
-              rttWifiManager.startRanging(request, cordova.getThreadPool(), new RangingResultCallback() {
-                @Override
-                public void onRangingResults(List<RangingResult> results) {
-                  // Process RTT results
-                  for (RangingResult result : results) {
-                    final int status = result.getStatus();
-
-                    if (status != STATUS_CODE_FAIL) {
-                      JSONObject rttItem = new JSONObject();
-
-                      try {
-                        rttItem.put("status", result.getStatus());
-                        rttItem.put("macAddress", result.getMacAddress());
-                        rttItem.put("distanceMm", result.getDistanceMm());
-                        rttItem.put("distanceStdDevMm", result.getDistanceStdDevMm());
-                        rttItem.put("rssi", result.getRssi());
-                        rttData.put(rttItem);
-                      } catch (JSONException e) {
-                        error[0] = e.getMessage();
-                      }
-                    } else {
-                      Log.v(TAG, "Result Failed With Status: " + status);
-                    }
-                  }
+                if (status != STATUS_CODE_FAIL) {
+                  JSONObject rttItem = new JSONObject();
 
                   try {
-                    JSONObject returnData = new JSONObject();
-                    returnData.put("scanData", scanData);
-                    returnData.put("rttData", rttData);
-                    returnData.put("error", error[0]);
-
-                    callbackContext.success(returnData);
+                    rttItem.put("status", result.getStatus());
+                    rttItem.put("macAddress", result.getMacAddress());
+                    rttItem.put("distanceMm", result.getDistanceMm());
+                    rttItem.put("distanceStdDevMm", result.getDistanceStdDevMm());
+                    rttItem.put("rssi", result.getRssi());
+                    rttData.put(rttItem);
                   } catch (JSONException e) {
-                    callbackContext.error("SCAN_WITH_RTT_FAILURE_1");
+                    error[0] = e.getMessage();
                   }
+                } else {
+                  Log.v(TAG, "Result Failed With Status: " + status);
                 }
+              }
 
-                @Override
-                public void onRangingFailure(int code) {
-                  // Handle failure
-                  error[0] = "Ranging failed with code: " + code;
-                }
-              });
-            } catch (Exception e) {
-              error[0] = "SecurityException: " + e.getMessage();
+              try {
+                JSONObject returnData = new JSONObject();
+                returnData.put("rttData", rttData);
+                returnData.put("error", error[0]);
+
+                callbackContext.success(returnData);
+              } catch (JSONException e) {
+                callbackContext.error("SCAN_WITH_RTT_FAILURE_1");
+              }
             }
-          } else {
-            Log.v(TAG, "RTT is not supported");
-            error[0] = "RTT_NOT_SUPPORTED";
 
-            try {
-              JSONObject data = new JSONObject();
-              data.put("scanData", scanData);
-              data.put("rttData", rttData);
-              data.put("error", error[0]);
-
-              callbackContext.success(data);
-            } catch (JSONException e) {
-              callbackContext.error("SCAN_WITH_RTT_FAILURE_2");
+            @Override
+            public void onRangingFailure(int code) {
+              // Handle failure
+              error[0] = "Ranging failed with code: " + code;
+              callbackContext.error(error[0]);
             }
-          }
-        } else {
-          Log.v(TAG, "RTT is not supported");
-          error[0] = "RTT_NOT_SUPPORTED";
-          
-          try {
-            JSONObject data = new JSONObject();
-            data.put("scanData", scanData);
-            data.put("rttData", rttData);
-            data.put("error", error[0]);
-
-            callbackContext.success(data);
-          } catch (JSONException e) {
-            callbackContext.error("SCAN_WITH_RTT_FAILURE_3");
-          }
+          });
+        } catch (Exception e) {
+          error[0] = "SecurityException: " + e.getMessage();
+          callbackContext.error(error[0]);
         }
+      } else {
+        Log.v(TAG, "RTT is not available");
+        error[0] = "RTT_NOT_AVAILABLE";
+        callbackContext.error("SCAN_WITH_RTT_FAILURE_2");
       }
-    };
+    } else {
+      Log.v(TAG, "RTT is not supported");
+      error[0] = "RTT_NOT_SUPPORTED";
+      callbackContext.error("SCAN_WITH_RTT_FAILURE_3");
+    }
 
     Log.v(TAG, "Submitting timeout to threadpool");
     cordova.getThreadPool().submit(new Runnable() {
       public void run() {
-
         Log.v(TAG, "Entering timeout");
-
         final int FIFTEEN_SECONDS = 15000;
 
         try {
@@ -563,22 +717,13 @@ public class WifiWizard2 extends CordovaPlugin {
             return;
           }
           syncContext.finished = true;
-
-          context.unregisterReceiver(myReceiver);
         }
 
         Log.v(TAG, "In timeout, error");
-        callbackContext.error("TIMEOUT_WAITING_FOR_SCAN");
+        callbackContext.error("TIMEOUT_WAITING_FOR_RTT");
       }
     });
 
-    if (!wifiManager.startScan()) {
-      Log.v(TAG, "Scan failed");
-      callbackContext.error("WIFI_SCAN_FAILED");
-      return false;
-    }
-
-    context.registerReceiver(myReceiver, filter);
     return true;
   }
   
