@@ -300,7 +300,7 @@ var WifiWizard2 = {
     },
 
     /**
-     * Start network scan and return results with RTT Data if it is supported (same as scan())
+     * Ranges for Wi-Fi RTT Data if it is supported (must call startScan, just use scan())
      * @returns {Promise<any>}
      */
     scanWithRTT: function () {
